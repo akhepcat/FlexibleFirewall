@@ -1,9 +1,15 @@
 #!/bin/bash
 # based on "http://www.linuxhelp.net/guides/iptables/"  but very mucked up.
 
-# space separated ports to allow local services like ssh(22), smtp(25), http(80), https(443)
+# TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
+# use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
+# IPv6 addresses should work here as well:  2000::beef:cafe;T25
+# You can specify multiple-same ports or hosts for multiple rules
+# prefix with an exclaimation point to negate the tuple (turn into deny)
+
+# space separated tuples to allow local services like ssh(22), smtp(25), http(80), https(443)
 # note that it's easy to conflict local services with forwarded ports, so be careful.
-LOCAL_SERVICES="22"
+LOCAL_TUPLES="22 10.100.0.0/16;443 !192.168.0.0/16"
 
 # 1 to enable IP forwarding/NAT,  0 disables
 FORWARDING=0
@@ -13,13 +19,12 @@ FORWARDING=0
 # They are currently set up to forward port 25 & 53 (Mail & DNS) to the example 10.1.1.51.
 # Anything incoming over your $EXT_4IF through your gateway will 
 # be automatically redirected invisibly to port 25 & 53 on 10.1.1.51
-# use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
+#
 # we don't currently support ICMP forwarding, because that's weird.
-# IPv6 addresses should work here as well:  2000::beef:cafe;T25
 #
 # These will automatically generate ACCEPT rules for outbound traffic as well
 # Note that these will not be applied if an internal non-default route is not found.
-TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
+REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
 
 ###########################################
@@ -47,7 +52,7 @@ ignore() {
 }
 
 tuple_forward() {
-	for PFWD in $TUPLES
+	for PFWD in $REMOTE_TUPLES
 	do
 		PORTS=${PFWD#*;}
 		HOST=${PFWD%;*}
@@ -88,7 +93,7 @@ tuple_forward() {
 }
 
 tuple_accept() {
-	for ALLOW in $TUPLES
+	for ALLOW in $REMOTE_TUPLES
 	do
 		HOST=${ALLOW%;*}
 	
@@ -238,7 +243,7 @@ tuple_accept
 # Allow DHCP
 	$IP4T -A INPUT -i $EXT_4IF -p udp --dport 67:68 --sport 67:68 -j ACCEPT
 
-for SERVICE in $LOCAL_SERVICES
+for SERVICE in $LOCAL_TUPLES
 do
 	for FWSTACK in $IP4T $IP6T
 	do
@@ -275,7 +280,7 @@ done
 	then
 		service fail2ban restart
 	else
-		[[ -n "$LOCAL_SERVICES" ]] && echo "install fail2ban to prevent brute-forcing of your local IPv4 services" >&2
+		[[ -n "$LOCAL_TUPLES" ]] && echo "install fail2ban to prevent brute-forcing of your local IPv4 services" >&2
 	fi
 }
 
