@@ -3,6 +3,9 @@
 
 # TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 # use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
+# You can specific 'I' for ICMP, and then the 'port' become the ICMP type.
+#  You cannot mix ICMP and TCP/UDP on the same tuple - use separate entries.
+#
 # IPv6 addresses should work here as well:  2000::beef:cafe;T25
 # You can specify multiple-same ports or hosts for multiple rules
 # prefix with an exclaimation point to negate the tuple (turn into deny)
@@ -52,25 +55,41 @@ ignore() {
 }
 
 tuple_forward() {
-	for PFWD in $REMOTE_TUPLES
+	for SERVICE in $REMOTE_TUPLES
 	do
-		PORTS=${PFWD#*;}
-		HOST=${PFWD%;*}
-	
-	
-		UDP=0; TCP=0
-		[[ -z "${PORTS##T*}" ]] && TCP=1
-		[[ -z "${PORTS##U*}" ]] && UDP=1
-
-		if [ -n "${PORTS##U*}" -a -n "${PORTS##T*}" ]; then TCP=1; UDP=1; fi
-	
-		if [ -z "${PORTS##*-*}" ]
+		ACTION="ACCEPT"
+		[[ -z "${SERVICE##*!*}" ]] && ACTION="DENY" && SERVICE=${SERVICE//!/}
+		
+		if [ -z "${SERVICE##*;*}" ]
 		then
-			SPORT=${PORTS//-/:}
+			# address + service tuple
+			DPORT=${SERVICE#*;}
+			SERVICE="${SERVICE%;*}"
+		fi
+		# fall through to parse the rest of the service.
+		if [ -z "${SERVICE##*/*}" -o -z "${SERVICE##*:*}" -o -z "${SERVICE##*.*}" ]
+		then
+			# bare IP (v4/v6) 'any/any'  tuple, because no trailing service
+			SOURCE="-s ${SERVICE}"
+		else
+			# it doesn't parse to an IP, so it's a port
+			DPORT=${SERVICE}
+		elif 
+
+		UDP=0; TCP=0
+		[[ -z "${DPORT##T*}" ]] && TCP=1
+		[[ -z "${DPORT##U*}" ]] && UDP=1
+
+		if [ -n "${DPORT##U*}" -a -n "${DPORT##T*}" ]; then TCP=1; UDP=1; fi
+
+		DPORT=${DPORT//[TU]/}
+
+		if [ -z "${DPORT##*-*}" ]
+		then
+			LPORT=${DPORT//-/:}
 			DPORT=""
 		else
-			SPORT=${PORTS//[TU]/}
-			DPORT=":${SPORT}"
+			LPORT=":${DPORT}"
 		fi
 	
 		EXT_IF=$EXT_4IF
@@ -85,10 +104,53 @@ tuple_forward() {
 		VALID=$(ip -o route get ${HOST})
 		if [ -n "${VALID##*$EXT_IF*}" ]
 		then
-			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp --dport ${SPORT} -j DNAT --to ${HOST}${DPORT}
-			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp --dport ${SPORT} -j DNAT --to ${HOST}${DPORT}
+			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp --dport ${LPORT} -j DNAT --to ${HOST}${DPORT}
+			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp --dport ${LPORT} -j DNAT --to ${HOST}${DPORT}
 		fi
 	
+	done
+}
+
+tuple_locals() {
+	for SERVICE in $LOCAL_TUPLES
+	do
+		ACTION="ACCEPT"
+		[[ -z "${SERVICE##*!*}" ]] && ACTION="DENY" && SERVICE=${SERVICE//!/}
+		
+		if [ -z "${SERVICE##*;*}" ]
+		then
+			# address + service tuple
+			DPORT=${SERVICE#*;}
+			SERVICE="${SERVICE%;*}"
+		fi
+		# fall through to parse the rest of the service.
+		if [ -z "${SERVICE##*/*}" -o -z "${SERVICE##*:*}" -o -z "${SERVICE##*.*}" ]
+		then
+			# bare IP (v4/v6) 'any/any'  tuple, because no trailing service
+			SOURCE="-s ${SERVICE}"
+		else
+			# it doesn't parse to an IP, so it's a port
+			DPORT=${SERVICE}
+		elif 
+
+		UDP=0; TCP=0
+		[[ -z "${DPORT##T*}" ]] && TCP=1
+		[[ -z "${DPORT##U*}" ]] && UDP=1
+		[[ -z "${DPORT##I*}" ]] && ICMP=1
+
+		if [ -n "${DPORT##U*}" -a -n "${DPORT##T*}" -a -n "${DPORT##I*}" ]; then TCP=1; UDP=1; fi
+
+		DPORT=${DPORT//[TUI]/}
+
+		for FWSTACK in $IP4T $IP6T
+		do
+			EXT_IF=$EXT_4IF
+			[[ -z "${FWSTACK##*6*}" ]] && EXT_IF=$EXT_6IF
+			
+			[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp --dport $DPORT -j ${ACTION}
+			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp --dport $DPORT -j ${ACTION}
+			[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp --icmp-type $DPORT -j ${ACTION}
+		done
 	done
 }
 
@@ -243,16 +305,7 @@ tuple_accept
 # Allow DHCP
 	$IP4T -A INPUT -i $EXT_4IF -p udp --dport 67:68 --sport 67:68 -j ACCEPT
 
-for SERVICE in $LOCAL_TUPLES
-do
-	for FWSTACK in $IP4T $IP6T
-	do
-		EXT_IF=$EXT_4IF
-		[[ -z "${FWSTACK##*6*}" ]] && EXT_IF=$EXT_6IF
-
-		$FWSTACK -A INPUT -i $EXT_IF -p tcp --dport $SERVICE -j ACCEPT
-	done
-done
+	tuple_locals
 
 # Uncomment to drop port 137 netbios packets silently. 
 # We don't like that netbios stuff, and it's way too 
