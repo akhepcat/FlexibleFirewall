@@ -5,6 +5,7 @@
 # use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
 # You can specific 'I' for ICMP, and then the 'port' become the ICMP type.
 #  You cannot mix ICMP and TCP/UDP on the same tuple - use separate entries.
+# a suffix of 'S' will enforce the equivalent source port, which is great for DHCP rules
 #
 # IPv6 addresses should work here as well:  2000::beef:cafe;T25
 # You can specify multiple-same ports or hosts for multiple rules
@@ -12,10 +13,10 @@
 
 # space separated tuples to allow local services like ssh(22), smtp(25), http(80), https(443)
 # note that it's easy to conflict local services with forwarded ports, so be careful.
-LOCAL_TUPLES="22 10.100.0.0/16;443 !192.168.0.0/16"
+LOCAL_TUPLES="T22 53 U67S U68S 10.100.0.0/16;T443 !192.168.0.0/16"
 
 # 1 to enable IP forwarding/NAT,  0 disables
-FORWARDING=0
+FORWARDING=1
 
 # If forwarding is enabled, and you would like to forward specific
 # ports to other machines on your home network, edit the variable below.
@@ -31,12 +32,12 @@ REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
 
 ###########################################
-DEBUG=""	# null-string disables, non-null string enables
+DEBUG="true"	# null-string disables, non-null string enables
 
 # The location of the ipXtables binaries file on your system.
 # We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
-test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore"
-test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore"
+test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore4"
+test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
 
 # The Network Interface you will be protecting. 
 # this will automagically configure for your external default interface
@@ -48,15 +49,23 @@ cmd=${cmd,,}
 
 FAIL2BAN=0
 
-ignore() {
-	args=$*
+ignore4() {
+	args="$*"
 	
-	[[ -n "$DEBUG" ]] && echo "ignoring ${args}"
+	[[ -n "$DEBUG" ]] && echo "DEBUG: iptables ${args}"
+}
+
+ignore6() {
+	args="$*"
+	
+	[[ -n "$DEBUG" ]] && echo "DEBUG: ip6tables ${args}"
 }
 
 tuple_forward() {
 	for SERVICE in $REMOTE_TUPLES
 	do
+		DPORT=""
+
 		ACTION="ACCEPT"
 		[[ -z "${SERVICE##*!*}" ]] && ACTION="DENY" && SERVICE=${SERVICE//!/}
 		
@@ -70,26 +79,30 @@ tuple_forward() {
 		if [ -z "${SERVICE##*/*}" -o -z "${SERVICE##*:*}" -o -z "${SERVICE##*.*}" ]
 		then
 			# bare IP (v4/v6) 'any/any'  tuple, because no trailing service
-			SOURCE="-s ${SERVICE}"
+			HOST=${SERVICE}
 		else
 			# it doesn't parse to an IP, so it's a port
 			DPORT=${SERVICE}
-		elif 
+		fi 
 
 		UDP=0; TCP=0
-		[[ -z "${DPORT##T*}" ]] && TCP=1
-		[[ -z "${DPORT##U*}" ]] && UDP=1
-
-		if [ -n "${DPORT##U*}" -a -n "${DPORT##T*}" ]; then TCP=1; UDP=1; fi
-
-		DPORT=${DPORT//[TU]/}
-
-		if [ -z "${DPORT##*-*}" ]
+		if [ -n "$DPORT" ]
 		then
-			LPORT=${DPORT//-/:}
-			DPORT=""
-		else
-			LPORT=":${DPORT}"
+			[[ -z "${DPORT##T*}" ]] && TCP=1
+			[[ -z "${DPORT##U*}" ]] && UDP=1
+
+			if [ -n "${DPORT##U*}" -a -n "${DPORT##T*}" ]; then TCP=1; UDP=1; fi
+
+			DPORT=${DPORT//[TUI]/}
+
+			if [ -z "${DPORT##*-*}" ]
+			then
+				LPORT="--dport ${DPORT//-/:}"
+				DPORT=""
+			else
+				LPORT="--dport $DPORT"
+				DPORT=":${DPORT}"
+			fi
 		fi
 	
 		EXT_IF=$EXT_4IF
@@ -102,10 +115,10 @@ tuple_forward() {
 		fi
 
 		VALID=$(ip -o route get ${HOST})
-		if [ -n "${VALID##*$EXT_IF*}" ]
+		if [ -n "${VALID##*$EXT_IF*}" -o -n "$DEBUG" ]
 		then
-			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp --dport ${LPORT} -j DNAT --to ${HOST}${DPORT}
-			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp --dport ${LPORT} -j DNAT --to ${HOST}${DPORT}
+			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp ${LPORT} -j DNAT --to ${HOST}${DPORT}
+			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp ${LPORT} -j DNAT --to ${HOST}${DPORT}
 		fi
 	
 	done
@@ -114,6 +127,8 @@ tuple_forward() {
 tuple_locals() {
 	for SERVICE in $LOCAL_TUPLES
 	do
+		DPORT=""
+
 		ACTION="ACCEPT"
 		[[ -z "${SERVICE##*!*}" ]] && ACTION="DENY" && SERVICE=${SERVICE//!/}
 		
@@ -131,26 +146,38 @@ tuple_locals() {
 		else
 			# it doesn't parse to an IP, so it's a port
 			DPORT=${SERVICE}
-		elif 
+		fi
 
-		UDP=0; TCP=0
-		[[ -z "${DPORT##T*}" ]] && TCP=1
-		[[ -z "${DPORT##U*}" ]] && UDP=1
-		[[ -z "${DPORT##I*}" ]] && ICMP=1
+		UDP=0; TCP=0; SPORT=""
+		if [ -n "$DPORT" ]
+		then
+			[[ -z "${DPORT%%*S}" ]] && SPORT="--sport ${DPORT//S/}" && DPORT=${DPORT//S/}
+			[[ -z "${DPORT##T*}" ]] && TCP=1 && DPORT="--dport $DPORT"
+			[[ -z "${DPORT##U*}" ]] && UDP=1 && DPORT="--dport $DPORT"
+			[[ -z "${DPORT##I*}" ]] && ICMP=1 && DPORT="--icmp-type $DPORT"
 
-		if [ -n "${DPORT##U*}" -a -n "${DPORT##T*}" -a -n "${DPORT##I*}" ]; then TCP=1; UDP=1; fi
+			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]; then TCP=1; UDP=1; fi
 
-		DPORT=${DPORT//[TUI]/}
+			DPORT=${DPORT//[UIT]/}
+		else
+			# DPORT is null, so there's no service, so assume all protos
+			TCP=1
+			UDP=1
+			ICMP=1
+		fi
 
-		for FWSTACK in $IP4T $IP6T
-		do
-			EXT_IF=$EXT_4IF
-			[[ -z "${FWSTACK##*6*}" ]] && EXT_IF=$EXT_6IF
-			
-			[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp --dport $DPORT -j ${ACTION}
-			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp --dport $DPORT -j ${ACTION}
-			[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp --icmp-type $DPORT -j ${ACTION}
-		done
+		EXT_IF=$EXT_4IF
+		if [ -z "${HOST##*:*}" ]
+		then
+			EXT_IF=$EXT_6IF
+			FWSTACK=$IP6T
+		else
+			FWSTACK=$IP4T
+		fi
+
+		[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp $DPORT $SPORT -j ${ACTION}
+		[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
+		[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp $DPORT -j ${ACTION}
 	done
 }
 
@@ -170,8 +197,11 @@ tuple_accept() {
 			DEST="0/0"
 		fi
 
-		VALID=$(ip -o route get ${HOST})
-		[[ -n "${VALID##*$EXT_IF*}" ]] && $FWSTACK -A ALLOW -s ${HOST} -d ${DEST}  -p all -j ACCEPT
+		if [ -n "${HOST}" ]
+		then
+			VALID=$(ip -o route get ${HOST})
+			[[ -n "${VALID##*$EXT_IF*}" ]] && $FWSTACK -A ALLOW -s ${HOST} -d ${DEST}  -p all -j ACCEPT
+		fi
 	done
 }
 
@@ -200,10 +230,10 @@ forwarding() {
 	
 	if [ $FORWARDING -gt 0 ]
 	then
-		[[ $IP4T != "ignore" ]] && echo ${STATE} > /proc/sys/net/ipv4/ip_forward || ignore "/proc/sys/net/ipv4/ip_forward not changed"
+		[[ -n "${IP4T##*ignore*}" ]] && echo ${STATE} > /proc/sys/net/ipv4/ip_forward || echo "DEBUG: /proc/sys/net/ipv4/ip_forward not changed"
 # no such IPv6 forwarding yet.  requires additional software support
 # to provide IPv6 routing, subnet delegation, etc.
-#		[[ $IP6T != "ignore" ]] && echo ${STATE} > /proc/sys/net/ipv6/ip_forward || ignore "/proc/sys/net/ipv6/ip_forward not changed"
+#		[[ -n "${IP6T##*ignore*}" ]] && echo ${STATE} > /proc/sys/net/ipv6/ip_forward || echo "DEBUG: /proc/sys/net/ipv6/ip_forward not changed"
 	fi
 }
 
@@ -302,9 +332,6 @@ tuple_accept
 	$IP6T -A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type 136 -m hl --hl-eq 255 -j ACCEPT
 	$IP6T -A INPUT -p ipv6-icmp -j firewall
 
-# Allow DHCP
-	$IP4T -A INPUT -i $EXT_4IF -p udp --dport 67:68 --sport 67:68 -j ACCEPT
-
 	tuple_locals
 
 # Uncomment to drop port 137 netbios packets silently. 
@@ -329,11 +356,18 @@ do
 	$FWSTACK -A OUTPUT -o $EXT_IF -p udp --dport 445 -j silent
 done
 
-	if [ -x /usr/bin/fail2ban-client ]
+	IAM=$(id -ru)
+	
+	if [ 1 -eq ${IAM:-0} ]
 	then
-		service fail2ban restart
+		if [ -x /usr/bin/fail2ban-client ]
+		then
+			service fail2ban restart
+		else
+			[[ -n "$LOCAL_TUPLES" ]] && echo "install fail2ban to prevent brute-forcing of your local IPv4 services" >&2
+		fi
 	else
-		[[ -n "$LOCAL_TUPLES" ]] && echo "install fail2ban to prevent brute-forcing of your local IPv4 services" >&2
+		[[ -n "$DEBUG" ]] && echo "DEBUG: service fail2ban restart"
 	fi
 }
 
