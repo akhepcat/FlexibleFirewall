@@ -1,8 +1,7 @@
 # localfw
 
 Generic firewall script for end-hosts or NAT gateways
-
-based on "http://www.linuxhelp.net/guides/iptables/"  but very mucked up.
+Initially based on "http://www.linuxhelp.net/guides/iptables/"
 
 Provides an easy access to allow local or forwarded services via preconfigured "tuples"
 

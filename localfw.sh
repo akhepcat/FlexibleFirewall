@@ -1,5 +1,6 @@
 #!/bin/bash
-# based on "http://www.linuxhelp.net/guides/iptables/"  but very mucked up.
+# Initially based on "http://www.linuxhelp.net/guides/iptables/"
+#    for the generic IPtables rules, as it had some nice defaults
 
 # TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 # use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
@@ -10,13 +11,15 @@
 # IPv6 addresses should work here as well:  2000::beef:cafe;T25
 # You can specify multiple-same ports or hosts for multiple rules
 # prefix with an exclaimation point to negate the tuple (turn into deny)
-
+#
 # space separated tuples to allow local services like ssh(22), smtp(25), http(80), https(443)
 # note that it's easy to conflict local services with forwarded ports, so be careful.
-LOCAL_TUPLES="T22 53 U67S U68S 10.100.0.0/16;T443 !192.168.0.0/16"
 
-# 1 to enable IP forwarding/NAT,  0 disables
-FORWARDING=1
+# Apply a basic ruleset for an endpoint: Only dhcp, dns, and ssh are allowed
+LOCAL_TUPLES="T22 53 U67S U68S"     # other valid tuples: "10.100.0.0/16;T443 !192.168.0.0/16"
+
+# 1 to enable IP forwarding/NAT,  0 disables, by default
+FORWARDING=0
 
 # If forwarding is enabled, and you would like to forward specific
 # ports to other machines on your home network, edit the variable below.
@@ -32,7 +35,7 @@ REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
 
 ###########################################
-DEBUG="true"	# null-string disables, non-null string enables
+DEBUG="false"	# null-string disables, non-null string enables
 
 # The location of the ipXtables binaries file on your system.
 # We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
