@@ -2,6 +2,8 @@
 # Initially based on "http://www.linuxhelp.net/guides/iptables/"
 #    for the generic IPtables rules, as it had some nice defaults
 
+### This script will override the defaults below with values from /etc/default/FlexibleFirewall
+
 # TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 # use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
 # You can specific 'I' for ICMP, and then the 'port' become the ICMP type.
@@ -41,6 +43,9 @@ DEBUG=""	# null-string disables, non-null string enables
 # We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
 test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore4"
 test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
+
+# override defaults with local settings
+test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
 
 # The Network Interface you will be protecting. 
 # this will automagically configure for your external default interface
