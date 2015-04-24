@@ -1,4 +1,4 @@
-# localfw
+# FlexibleFirewall
 
 Generic firewall script for end-hosts or NAT gateways
 Initially based on "http://www.linuxhelp.net/guides/iptables/"
@@ -24,3 +24,13 @@ TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 
 
 Note: It's easy to conflict local services with forwarded ports, so be careful.
+
+
+# Install
+
+* put a copy in /etc/init.d
+* chmod +x /etc/init.d/FlexibleFirewall
+* create symlinks for startup/shutdown in the appropriate /etc/rcX.d
+* edit the top of the script for your local rules
+* give it a run (service FlexibleFirewall start )
+
