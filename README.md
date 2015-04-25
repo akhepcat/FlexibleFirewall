@@ -3,7 +3,7 @@
 Generic firewall script for end-hosts or NAT gateways
 Initially based on "http://www.linuxhelp.net/guides/iptables/"
 
-Provides an easy access to allow local or forwarded services via preconfigured "tuples"
+Provides an easy access to allow local or forwarded services via pre-configured "tuples"
 
 	LOCAL_TUPLES="T22 53 U67S U68S 10.100.0.0/16;T443 !192.168.0.0/16"
 
@@ -20,7 +20,7 @@ TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 * IPv6 addresses work here as well:  2000::beef:cafe;T25  
 * Destination forwarding can also specify ranges of ports:  U32768-32999
 * You can specify multiple-same ports or hosts for multiple tuple-rules  
-* Prefix the tuple with an exclaimation point to negate it (turn into deny)  
+* Prefix the tuple with an exclamation point to negate it (turn into deny)  
 
 
 Note: It's easy to conflict local services with forwarded ports, so be careful.
