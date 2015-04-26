@@ -168,7 +168,7 @@ tuple_locals() {
 			DPORT=${SERVICE}
 		fi
 
-		UDP=0; TCP=0; SPORT=""
+		UDP=0; TCP=0; ICMP=0; SPORT=""
 		if [ -n "$DPORT" ]
 		then
 			[[ -z "${DPORT%%*S}" ]] && SPORT="--sport ${DPORT//[SUIT]/}" && DPORT=${DPORT//S/}
