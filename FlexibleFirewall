@@ -24,6 +24,7 @@
 # IPv6 addresses should work here as well:  2000::beef:cafe;T25
 # You can specify multiple-same ports or hosts for multiple rules
 # prefix with an exclaimation point to negate the tuple (turn into deny)
+# prefix with an @ instead of an exclaimation port for silent denies.
 #
 # space separated tuples to allow local services like ssh(22), smtp(25), http(80), https(443)
 # note that it's easy to conflict local services with forwarded ports, so be careful.
@@ -45,6 +46,8 @@ FORWARDING=0
 # These will automatically generate ACCEPT rules for outbound traffic as well
 # Note that these will not be applied if an internal non-default route is not found.
 REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
+
+NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
 DEBUG=""	# null-string disables, non-null string enables
 
@@ -86,6 +89,7 @@ tuple_forward() {
 
 		ACTION="ACCEPT"
 		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
+		[[ -z "${SERVICE##*@*}" ]] && ACTION="silent" && SERVICE=${SERVICE//@/}
 		
 		if [ -z "${SERVICE##*;*}" ]
 		then
@@ -150,6 +154,7 @@ tuple_locals() {
 
 		ACTION="ACCEPT"
 		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
+		[[ -z "${SERVICE##*@*}" ]] && ACTION="silent" && SERVICE=${SERVICE//@/}
 		
 		if [ -z "${SERVICE##*;*}" ]
 		then
@@ -375,8 +380,11 @@ tuple_accept
 # spammy with windows machines on the network.
 for FWSTACK in $IP4T $IP6T
 do
-	$FWSTACK -A INPUT -p udp --sport 137 --dport 137 -j silent
-	$FWSTACK -A INPUT -p udp --dport 5353 -j silent
+	if [ -n "${NONETBIOS}" ]
+	then
+		$FWSTACK -A INPUT -p udp --dport 135:139 -j silent
+		$FWSTACK -A INPUT -p tcp --dport 135:139 -j silent
+	fi
 
 # Our final trap. Everything on INPUT goes to the dropwall 
 # so we don't get silent drops.
@@ -386,10 +394,11 @@ do
 	[[ -z "${FWSTACK##*6*}" ]] && EXT_IF=$EXT_6IF
 
 # Drop some specific outbound chatter
-	$FWSTACK -A OUTPUT -o $EXT_IF -p udp --dport 5353 -j silent
-	$FWSTACK -A OUTPUT -o $EXT_IF -p udp --dport 137 -j silent
-	$FWSTACK -A OUTPUT -o $EXT_IF -p tcp --dport 445 -j silent
-	$FWSTACK -A OUTPUT -o $EXT_IF -p udp --dport 445 -j silent
+	if [ -n "${NONETBIOS}" ]
+	then
+		$FWSTACK -A OUTPUT -o $EXT_IF -p udp --dport 135:139 -j silent
+		$FWSTACK -A OUTPUT -o $EXT_IF -p tcp --dport 135:139 -j silent
+	fi
 done
 
 	IAM=$(id -ru)
