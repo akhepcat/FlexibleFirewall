@@ -237,6 +237,9 @@ stop() {
 		$FWSTACK -F -t mangle
 		$FWSTACK -F -t nat
 		$FWSTACK -X
+		$FWSTACK -P INPUT ACCEPT
+		$FWSTACK -P OUTPUT ACCEPT
+		$FWSTACK -P FORWARD ACCEPT
 	done
 }
 
