@@ -21,6 +21,7 @@ TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 * Destination forwarding can also specify ranges of ports:  U32768-32999
 * You can specify multiple-same ports or hosts for multiple tuple-rules  
 * Prefix the tuple with an exclamation point to negate it (turn into deny)  
+* Prefix the tuple with an 'at-sign' instead of '!' to silently deny
 
 
 Note: It's easy to conflict local services with forwarded ports, so be careful.
