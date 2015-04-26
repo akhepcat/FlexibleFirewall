@@ -32,5 +32,6 @@ Note: It's easy to conflict local services with forwarded ports, so be careful.
 * chmod +x /etc/init.d/FlexibleFirewall
 * create symlinks for startup/shutdown in the appropriate /etc/rcX.d
 * edit the top of the script for your local rules
+*  OR (preferred) create /etc/default/FlexibleFirewall  and put your rules there.
 * give it a run (service FlexibleFirewall start )
 
