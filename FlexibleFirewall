@@ -132,9 +132,10 @@ tuple_forward() {
 			FWSTACK=$IP4T
 		fi
 
-		VALID=$(ip -o route get ${HOST})
+		ROUTE=$(ip -o route get ${HOST})
 		if [ -n "${VALID##*$EXT_IF*}" -o -n "$DEBUG" ]
 		then
+			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
 			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp ${LPORT} -j DNAT --to ${HOST}${DPORT}
 			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp ${LPORT} -j DNAT --to ${HOST}${DPORT}
 		fi
@@ -197,6 +198,8 @@ tuple_locals() {
 				FWSTACK=$IP4T
 			fi
 
+			ROUTE=$(ip -o route get ${HOST})
+			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
 			[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp $DPORT $SPORT -j ${ACTION}
 			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
 			[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp $DPORT -j ${ACTION}
