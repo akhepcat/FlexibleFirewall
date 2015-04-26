@@ -1,8 +1,19 @@
 #!/bin/bash
 # Initially based on "http://www.linuxhelp.net/guides/iptables/"
 #    for the generic IPtables rules, as it had some nice defaults
-
 ### This script will override the defaults below with values from /etc/default/FlexibleFirewall
+
+### BEGIN INIT INFO
+# Provides:          FlexibleFirewall
+# Required-Start:    mountkernfs $local_fs
+# Required-Stop:     $local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# X-Start-Before:    $network
+# X-Stop-After:      $network
+# Short-Description: configure iptables rules
+# Description:       creates iptables rules based on simple tuples
+### END INIT INFO
 
 # TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 # use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
