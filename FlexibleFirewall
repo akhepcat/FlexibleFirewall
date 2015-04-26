@@ -85,7 +85,7 @@ tuple_forward() {
 		DPORT=""
 
 		ACTION="ACCEPT"
-		[[ -z "${SERVICE##*!*}" ]] && ACTION="DENY" && SERVICE=${SERVICE//!/}
+		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
 		
 		if [ -z "${SERVICE##*;*}" ]
 		then
@@ -148,7 +148,7 @@ tuple_locals() {
 		DPORT=""; HOST=""; SOURCE=""
 
 		ACTION="ACCEPT"
-		[[ -z "${SERVICE##*!*}" ]] && ACTION="DENY" && SERVICE=${SERVICE//!/}
+		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
 		
 		if [ -z "${SERVICE##*;*}" ]
 		then
@@ -203,9 +203,9 @@ tuple_locals() {
 		else
 			for FWSTACK in $IP4T $IP6T
 			do
-				[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp $DPORT $SPORT -j ${ACTION}
-				[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
-				[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp $DPORT -j ${ACTION}
+				[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -p tcp $DPORT $SPORT -j ${ACTION}
+				[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -p udp $DPORT $SPORT -j ${ACTION}
+				[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -p icmp $DPORT -j ${ACTION}
 			done
 		fi			
 	done
