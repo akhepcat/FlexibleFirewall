@@ -5,7 +5,7 @@ Initially based on "http://www.linuxhelp.net/guides/iptables/"
 
 Provides an easy access to allow local or forwarded services via pre-configured "tuples"
 
-	LOCAL_TUPLES="T22 53 U67S U68S 10.100.0.0/16;T443 !192.168.0.0/16 @5353"
+	LOCAL_TUPLES="T22 53 U67 U68 P41 @1714 @5353 fe80::/10 ff00::/8 10.100.0.0/16;T443 !192.168.0.0/16"
 
 Note that these remote forwards will not be applied if an internal non-default route is not found.
 
