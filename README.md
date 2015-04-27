@@ -19,6 +19,7 @@ TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 * A suffix of 'S' will enforce the equivalent source port, which is great for DHCP rules
 * IPv6 addresses work here as well:  2000::beef:cafe;T25  
 * Destination forwarding can also specify ranges of ports:  U32768-32999
+* A prefix of 'P' will allow you to permit/deny specific IPv4 protocols (such as P41 for 6-in-4 tunneling)
 * You can specify multiple-same ports or hosts for multiple tuple-rules  
 * Prefix the tuple with an exclamation point to negate it (turn into deny)  
 * Prefix the tuple with an 'at-sign' instead of '!' to silently deny
