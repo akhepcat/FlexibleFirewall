@@ -20,6 +20,7 @@
 # You can specific 'I' for ICMP, and then the 'port' become the ICMP type.
 #  You cannot mix ICMP and TCP/UDP on the same tuple - use separate entries.
 # a suffix of 'S' will enforce the equivalent source port, which is great for DHCP rules
+# A prefix of 'P' will allow the listed protocol through (such as P41, for 6in4 tunnels)
 #
 # IPv6 addresses should work here as well:  2000::beef:cafe;T25
 # You can specify multiple-same ports or hosts for multiple rules
@@ -30,7 +31,7 @@
 # note that it's easy to conflict local services with forwarded ports, so be careful.
 
 # Apply a basic ruleset for an endpoint: Only dhcp, dns, and ssh are allowed
-LOCAL_TUPLES="T22 53 U67S U68S"     # other valid tuples: "10.100.0.0/16;T443 !192.168.0.0/16"
+LOCAL_TUPLES="P41 T22 53 U67S U68S"     # other valid tuples: "10.100.0.0/16;T443 !192.168.0.0/16"
 
 # 1 to enable IP forwarding/NAT,  0 disables, by default
 FORWARDING=0
@@ -55,6 +56,11 @@ DEBUG=""	# null-string disables, non-null string enables
 # override defaults with local settings
 test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
 
+## for LSB init-style startup
+[[ -r /lib/lsb/init-functions ]] && test run_by_init && . /lib/lsb/init-functions
+
+PROG="${0##*/}"
+
 # The location of the ipXtables binaries file on your system.
 # We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
 test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore4"
@@ -73,14 +79,25 @@ FAIL2BAN=0
 ignore4() {
 	args="$*"
 	
-	[[ -n "$DEBUG" ]] && echo "DEBUG: iptables ${args}"
+	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: iptables ${args}"
 }
 
 ignore6() {
 	args="$*"
 	
-	[[ -n "$DEBUG" ]] && echo "DEBUG: ip6tables ${args}"
+	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: ip6tables ${args}"
 }
+
+# Are we running from init?
+run_by_init() {
+        if [ -n "${previous}" -a -n "${runlevel}" ]
+        then
+                return 0
+        else
+                return 1
+        fi
+}
+
 
 tuple_forward() {
 	for SERVICE in $REMOTE_TUPLES
@@ -150,11 +167,12 @@ tuple_forward() {
 tuple_locals() {
 	for SERVICE in $LOCAL_TUPLES
 	do
-		DPORT=""; HOST=""; SOURCE=""
+		DPORT=""; HOST=""; SOURCE=""; PROTO=""
 
 		ACTION="ACCEPT"
 		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
 		[[ -z "${SERVICE##*@*}" ]] && ACTION="silent" && SERVICE=${SERVICE//@/}
+		[[ -z "${SERVICE##*P*}" ]] && PROTO=${SERVICE//P/} && SERVICE=""
 		
 		if [ -z "${SERVICE##*;*}" ]
 		then
@@ -185,7 +203,8 @@ tuple_locals() {
 
 			DPORT=${DPORT//[UIT]/}
 			[[ -n "${DPORT##*dport*}" ]] && DPORT="--dport ${DPORT}"
-		else
+		elif [ -z "${PROTO}" ]
+		then
 			# DPORT is null, so there's no service, so assume all protos
 			TCP=1
 			UDP=1
@@ -209,12 +228,17 @@ tuple_locals() {
 			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
 			[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp $DPORT -j ${ACTION}
 		else
-			for FWSTACK in $IP4T $IP6T
-			do
-				[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -p tcp $DPORT $SPORT -j ${ACTION}
-				[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -p udp $DPORT $SPORT -j ${ACTION}
-				[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -p icmp $DPORT -j ${ACTION}
-			done
+			if [ -z "${PROTO}" ]
+			then
+				for FWSTACK in $IP4T $IP6T
+				do
+					[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -p tcp $DPORT $SPORT -j ${ACTION}
+					[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -p udp $DPORT $SPORT -j ${ACTION}
+					[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -p icmp $DPORT -j ${ACTION}
+				done
+			else
+				$IP4T -A INPUT -p ${PROTO} -j ${ACTION}
+			fi
 		fi			
 	done
 }
@@ -271,10 +295,10 @@ forwarding() {
 	
 	if [ $FORWARDING -gt 0 ]
 	then
-		[[ -n "${IP4T##*ignore*}" ]] && echo ${STATE} > /proc/sys/net/ipv4/ip_forward || echo "DEBUG: /proc/sys/net/ipv4/ip_forward not changed"
+		[[ -n "${IP4T##*ignore*}" ]] && echo ${STATE} > /proc/sys/net/ipv4/ip_forward || lsb_msg "DEBUG: /proc/sys/net/ipv4/ip_forward not changed"
 # no such IPv6 forwarding yet.  requires additional software support
 # to provide IPv6 routing, subnet delegation, etc.
-#		[[ -n "${IP6T##*ignore*}" ]] && echo ${STATE} > /proc/sys/net/ipv6/ip_forward || echo "DEBUG: /proc/sys/net/ipv6/ip_forward not changed"
+#		[[ -n "${IP6T##*ignore*}" ]] && echo ${STATE} > /proc/sys/net/ipv6/ip_forward || lsb_msg "DEBUG: /proc/sys/net/ipv6/ip_forward not changed"
 	fi
 }
 
@@ -367,6 +391,7 @@ tuple_accept
 	$IP4T -A INPUT -p icmp --icmp-type 8 -m limit --limit 1/second -j ACCEPT
 	$IP4T -A INPUT -p icmp -j firewall
 
+	$IP6T -A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type 128 -m limit --limit 1/second -j ACCEPT
 	$IP6T -A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type 133 -m hl --hl-eq 255 -j ACCEPT
 	$IP6T -A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type 134 -m hl --hl-eq 255 -j ACCEPT
 	$IP6T -A INPUT -p ipv6-icmp -m icmp6 --icmpv6-type 135 -m hl --hl-eq 255 -j ACCEPT
@@ -409,20 +434,54 @@ done
 		then
 			service fail2ban restart
 		else
-			[[ -n "$LOCAL_TUPLES" ]] && echo "install fail2ban to prevent brute-forcing of your local IPv4 services" >&2
+			[[ -n "$LOCAL_TUPLES" ]] && lsb_msg "install fail2ban to prevent brute-forcing of your local IPv4 services" >&2
 		fi
 	else
-		[[ -n "$DEBUG" ]] && echo "DEBUG: service fail2ban restart"
+		[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: service fail2ban restart"
 	fi
 }
 
+lsb_log_begin() {
+        MSG="$*"
+        run_by_init && log_action_begin_msg "${MSG}" "${PROG}" || echo "BEGIN: ${MSG}"
+}
+
+lsb_log_end() {
+        MSG="$*"
+        run_by_init && log_action_end_msg "${MSG}" "${PROG}" || echo "END: ${MSG}"
+}
+
+lsb_log_fail() {
+        MSG="$*"
+        run_by_init && log_failure_msg "${MSG}" "${PROG}" || echo "FAIL: ${MSG}"
+}
+
+lsb_log_ok() {
+        MSG="$*"
+        run_by_init && log_success_msg "${MSG}" "${PROG}" || echo "SUCCESS: ${MSG}"
+}
+
+lsb_msg() {
+        MSG="$*"
+        run_by_init && log_action_msg "${MSG}" || echo "${MSG}"
+}
+
+
 case ${cmd} in
-        start) start
+        start) lsb_log_begin "starting";
+	       start;
+	       lsb_log_end 0;
         	;;
-        stop|flush|reset) stop
+        stop|flush|reset) lsb_log_begin "stopping";
+        		  stop;
+        		  lsb_log_end 0;
         	;;
-        restart) stop; start
+        force-reload|restart) stop; start
         	;;
-        *) echo "$0 [stop|start|restart]"
+        status) lsb_msg "status not implemented"
+        	;;
+        *) echo "${PROG} [stop|start|restart|force-reload|status]"
         	;;
 esac 
+
+exit 0
