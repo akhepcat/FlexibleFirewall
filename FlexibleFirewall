@@ -50,31 +50,11 @@ REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
 NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
-DEBUG=""	# null-string disables, non-null string enables
+DEBUG="yes"	# null-string disables, non-null string enables
 
 ###########################################
-# override defaults with local settings
-test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
-
-## for LSB init-style startup
-[[ -r /lib/lsb/init-functions ]] && test run_by_init && . /lib/lsb/init-functions
-
-PROG="${0##*/}"
-
-# The location of the ipXtables binaries file on your system.
-# We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
-test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore4"
-test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
-
-# The Network Interface you will be protecting. 
-# this will automagically configure for your external default interface
-EXT_4IF="$(awk 'BEGIN { IGNORECASE=1 } /^[a-z0-9]+[ \t]+00000000/ { print $1; exit }' /proc/net/route)"
-EXT_6IF="$(awk 'BEGIN { IGNORECASE=1 } /^0+ 00 0+ 00/ && !/ffffffff/ { print $10; exit }' /proc/net/ipv6_route)"
-
-cmd=${1:-help}
-cmd=${cmd,,}
-
-FAIL2BAN=0
+#
+# Functions here...
 
 ignore4() {
 	args="$*"
@@ -92,8 +72,10 @@ ignore6() {
 run_by_init() {
         if [ -n "${previous}" -a -n "${runlevel}" ]
         then
+        	#running by init
                 return 0
         else
+        	#Not init..
                 return 1
         fi
 }
@@ -465,6 +447,31 @@ lsb_msg() {
         MSG="$*"
         run_by_init && log_action_msg "${MSG}" || echo "${MSG}"
 }
+
+##########  Main starts here
+
+# override defaults with local settings
+[[ -z "$DEBUG" ]] && test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
+
+## for LSB init-style startup
+[[ -r /lib/lsb/init-functions ]] && run_by_init && . /lib/lsb/init-functions
+
+PROG="${0##*/}"
+
+# The location of the ipXtables binaries file on your system.
+# We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
+test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore4"
+test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
+
+# The Network Interface you will be protecting. 
+# this will automagically configure for your external default interface
+EXT_4IF="$(awk 'BEGIN { IGNORECASE=1 } /^[a-z0-9]+[ \t]+00000000/ { print $1; exit }' /proc/net/route)"
+EXT_6IF="$(awk 'BEGIN { IGNORECASE=1 } /^0+ 00 0+ 00/ && !/ffffffff/ { print $10; exit }' /proc/net/ipv6_route)"
+
+cmd=${1:-help}
+cmd=${cmd,,}
+
+FAIL2BAN=0
 
 
 case ${cmd} in
