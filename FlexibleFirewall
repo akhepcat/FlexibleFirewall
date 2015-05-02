@@ -31,10 +31,10 @@
 # note that it's easy to conflict local services with forwarded ports, so be careful.
 
 # Apply a basic ruleset for an endpoint: Only dhcp, dns, and ssh are allowed
-LOCAL_TUPLES="P41 T22 53 U67S U68S"     # other valid tuples: "10.100.0.0/16;T443 !192.168.0.0/16"
+LOCAL_TUPLES="P41 T22 53 U67S U68S ::0/0;I129 192.168.0.0/16;I1"     # other valid tuples: "10.100.0.0/16;T443 !192.168.0.0/16"
 
 # 1 to enable IP forwarding/NAT,  0 disables, by default
-FORWARDING=0
+FORWARDING=1
 
 # If forwarding is enabled, and you would like to forward specific
 # ports to other machines on your home network, edit the variable below.
@@ -48,28 +48,28 @@ FORWARDING=0
 # Note that these will not be applied if an internal non-default route is not found.
 REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
-NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
+#NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
-DEBUG="yes"	# null-string disables, non-null string enables
+DEBUG="DEBUGME"	# null-string disables, non-null string enables
 
 ###########################################
 #
 # Functions here...
 
-ignore4() {
+function ignore4() {
 	args="$*"
 	
 	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: iptables ${args}"
 }
 
-ignore6() {
+function ignore6() {
 	args="$*"
 	
 	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: ip6tables ${args}"
 }
 
 # Are we running from init?
-run_by_init() {
+function run_by_init() {
         if [ -n "${previous}" -a -n "${runlevel}" ]
         then
         	#running by init
@@ -80,33 +80,138 @@ run_by_init() {
         fi
 }
 
+function decode_port() {
+	# Returns the L4 port or ICMP/6 type (ready for further parsing) or null for 'any'
+	local R_PORT=$1
+	local S_TUPLE=$2
+	local __temp=""	
 
-tuple_forward() {
-	for SERVICE in $REMOTE_TUPLES
+#	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: decode_port(S_TUPLE)=${S_TUPLE}"
+
+	if [ -z "${S_TUPLE##*;*}" ]	# we found an address/port pair
+	then
+		__temp=${TUPLE#*;}
+	elif [ -n "${S_TUPLE##*/*}" -a -n "${S_TUPLE##*:*}" -a -n "${S_TUPLE##*.*}" ]
+	then
+		__temp=${S_TUPLE}
+	fi
+	
+
+#	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: decode_port=${__temp}"
+	
+	eval $R_PORT="'$__temp'"
+}
+
+function decode_source() {
+	# Returns the source address (ready for iptables) or null for 'any'
+	local R_IP=$1
+	local S_TUPLE=$2
+	local __temp=""
+
+#	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: decode_source(S_TUPLE)=${S_TUPLE}"
+	
+	if [ -z "${S_TUPLE##*;*}" ]	# we found an address/port pair
+	then
+		__temp=${S_TUPLE%;*}
+	elif [ -z "${S_TUPLE##*/*}" -o -z "${S_TUPLE##*:*}" -o -z "${S_TUPLE##*.*}" ]
+	then
+		__temp=${S_TUPLE}
+	fi
+	
+#	[[ -n "$DEBUG" ]] && lsb_msg "DEBUG: decode_source=${__temp}"
+
+	eval $R_IP="'$__temp'"
+}
+
+function tuple_locals() {
+	for TUPLE in $LOCAL_TUPLES
 	do
-		DPORT=""
+		UDP=0; TCP=0; ICMP=0
+		DPORT=""; SPORT=""; HOST=""; SOURCE=""; PROTO=""
+		IPROTO="icmp"; ADDRFAM="-4"; ACTION="ACCEPT"
+		
+		[[ -z "${TUPLE##*!*}" ]] && ACTION="firewall" && TUPLE=${TUPLE//!/}
+		[[ -z "${TUPLE##*@*}" ]] && ACTION="silent" && TUPLE=${TUPLE//@/}
+		[[ -z "${TUPLE##*P*}" ]] && PROTO=${TUPLE//P/} && TUPLE=""
+		
+		decode_source SOURCE ${TUPLE}
+		decode_port DPORT ${TUPLE}
+
+		if [ -n "$DPORT" ]
+		then
+			[[ -z "${DPORT%%*S}" ]] && SPORT="--sport ${DPORT//[SUIT]/}" && DPORT="--dport ${DPORT//S/}"
+			[[ -z "${DPORT##T*}" ]] && TCP=1 && DPORT="--dport $DPORT"
+			[[ -z "${DPORT##U*}" ]] && UDP=1 && DPORT="--dport $DPORT"
+			[[ -z "${DPORT##I*}" ]] && ICMP=1 && DPORT="--icmp-type $DPORT"
+
+			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]; then TCP=1; UDP=1; fi
+		else
+			# DPORT is null, so there's no service, so assume all protos
+			TCP=1
+			UDP=1
+			ICMP=1
+		fi
+
+		DPORT=${DPORT//[SUIT]/}
+		SOURCE=${SOURCE//[SUIT]/}
+
+		if [ -n "${SOURCE}" ]
+		then
+			EXT_IF=$EXT_4IF
+			if [ -z "${SOURCE##*:*}" ]
+			then
+				EXT_IF=$EXT_6IF
+				FWSTACK=$IP6T
+				IPROTO="ipv6-icmp"
+				ADDRFAM="-6"
+				DPORT=${DPORT//icmp/icmpv6}
+				SOURCE=${SOURCE%/0}
+			else
+				FWSTACK=$IP4T
+			fi
+
+			if [ -z "$DEBUG" ]
+			then
+				ROUTE=$(ip ${ADDRFAM} -o route get ${SOURCE})
+			else
+				lsb_msg "DEBUG: ip ${ADDRFAM} -o route get ${SOURCE}"
+				ROUTE="debug"
+			fi
+			[[ -n "${SOURCE}" ]] && SOURCE="-s ${SOURCE}"
+
+			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
+			[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp $DPORT $SPORT -j ${ACTION}
+			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
+			[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p ${IPROTO} $DPORT -j ${ACTION}
+		else
+			if [ -z "${PROTO}" ]
+			then
+				for FWSTACK in $IP4T $IP6T
+				do
+					[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -p tcp $DPORT $SPORT -j ${ACTION}
+					[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -p udp $DPORT $SPORT -j ${ACTION}
+					[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -p ${IPROTO} $DPORT -j ${ACTION}
+				done
+			else
+				$IP4T -A INPUT -p ${PROTO} -j ${ACTION}
+			fi
+		fi			
+	done
+}
+
+function tuple_forward() {
+	for TUPLE in $REMOTE_TUPLES
+	do
+		UDP=0; TCP=0
+		DPORT=""; ADDRFAM="-4"; SOURCE=""
 
 		ACTION="ACCEPT"
-		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
-		[[ -z "${SERVICE##*@*}" ]] && ACTION="silent" && SERVICE=${SERVICE//@/}
+		[[ -z "${TUPLE##*!*}" ]] && ACTION="firewall" && TUPLE=${TUPLE//!/}
+		[[ -z "${TUPLE##*@*}" ]] && ACTION="silent" && TUPLE=${TUPLE//@/}
 		
-		if [ -z "${SERVICE##*;*}" ]
-		then
-			# address + service tuple
-			DPORT=${SERVICE#*;}
-			SERVICE="${SERVICE%;*}"
-		fi
-		# fall through to parse the rest of the service.
-		if [ -z "${SERVICE##*/*}" -o -z "${SERVICE##*:*}" -o -z "${SERVICE##*.*}" ]
-		then
-			# bare IP (v4/v6) 'any/any'  tuple, because no trailing service
-			HOST=${SERVICE}
-		else
-			# it doesn't parse to an IP, so it's a port
-			DPORT=${SERVICE}
-		fi 
+		decode_source SOURCE ${TUPLE}
+		decode_port DPORT ${TUPLE}
 
-		UDP=0; TCP=0
 		if [ -n "$DPORT" ]
 		then
 			[[ -z "${DPORT##T*}" ]] && TCP=1
@@ -114,7 +219,7 @@ tuple_forward() {
 
 			if [ -n "${DPORT##U*}" -a -n "${DPORT##T*}" ]; then TCP=1; UDP=1; fi
 
-			DPORT=${DPORT//[TUI]/}
+			DPORT=${DPORT//[TU]/}
 
 			if [ -z "${DPORT##*-*}" ]
 			then
@@ -127,129 +232,70 @@ tuple_forward() {
 		fi
 	
 		EXT_IF=$EXT_4IF
-		if [ -z "${HOST##*:*}" ]
+		if [ -z "${SOURCE##*:*}" ]
 		then
 			EXT_IF=$EXT_6IF
 			FWSTACK=$IP6T
+			ADDRFAM="-6"
 		else
 			FWSTACK=$IP4T
 		fi
 
-		ROUTE=$(ip -o route get ${HOST})
-		if [ -n "${VALID##*$EXT_IF*}" -o -n "$DEBUG" ]
+		if [ -z "$DEBUG" ]
+		then
+			ROUTE=$(ip ${ADDRFAM} -o route get ${SOURCE})
+		else
+			lsb_msg "DEBUG: ip ${ADDRFAM} -o route get ${SOURCE}"
+			ROUTE="debug"
+		fi
+		if [ -n "${ROUTE##*$EXT_IF*}" -o -n "$DEBUG" ]
 		then
 			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
-			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp ${LPORT} -j DNAT --to ${HOST}${DPORT}
-			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp ${LPORT} -j DNAT --to ${HOST}${DPORT}
+			[[ $TCP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p tcp ${LPORT} -j DNAT --to ${SOURCE}${DPORT}
+			[[ $UDP -eq 1 ]] && $FWSTACK -t nat -A PREROUTING -i $EXT_IF -p udp ${LPORT} -j DNAT --to ${SOURCE}${DPORT}
 		fi
 	
 	done
 }
 
-tuple_locals() {
-	for SERVICE in $LOCAL_TUPLES
+
+function tuple_accept() {
+	[[ ${FORWARDING} -ne 1 ]] && return
+
+	for TUPLE in $REMOTE_TUPLES
 	do
-		DPORT=""; HOST=""; SOURCE=""; PROTO=""
+		ADDRFAM="-4"; SOURCE=""; DPORT=""
 
-		ACTION="ACCEPT"
-		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
-		[[ -z "${SERVICE##*@*}" ]] && ACTION="silent" && SERVICE=${SERVICE//@/}
-		[[ -z "${SERVICE##*P*}" ]] && PROTO=${SERVICE//P/} && SERVICE=""
-		
-		if [ -z "${SERVICE##*;*}" ]
-		then
-			# address + service tuple
-			DPORT=${SERVICE#*;}
-			SERVICE="${SERVICE%;*}"
-		fi
-		# fall through to parse the rest of the service.
-		if [ -z "${SERVICE##*/*}" -o -z "${SERVICE##*:*}" -o -z "${SERVICE##*.*}" ]
-		then
-			# bare IP (v4/v6) 'any/any'  tuple, because no trailing service
-			SOURCE="-s ${SERVICE}"
-			HOST=${SERVICE}
-		else
-			# it doesn't parse to an IP, so it's a port
-			DPORT=${SERVICE}
-		fi
-
-		UDP=0; TCP=0; ICMP=0; SPORT=""
-		if [ -n "$DPORT" ]
-		then
-			[[ -z "${DPORT%%*S}" ]] && SPORT="--sport ${DPORT//[SUIT]/}" && DPORT=${DPORT//S/}
-			[[ -z "${DPORT##T*}" ]] && TCP=1 && DPORT="--dport $DPORT"
-			[[ -z "${DPORT##U*}" ]] && UDP=1 && DPORT="--dport $DPORT"
-			[[ -z "${DPORT##I*}" ]] && ICMP=1 && DPORT="--icmp-type $DPORT"
-
-			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]; then TCP=1; UDP=1; fi
-
-			DPORT=${DPORT//[UIT]/}
-			[[ -n "${DPORT##*dport*}" ]] && DPORT="--dport ${DPORT}"
-		elif [ -z "${PROTO}" ]
-		then
-			# DPORT is null, so there's no service, so assume all protos
-			TCP=1
-			UDP=1
-			ICMP=1
-		fi
-
-		if [ -n "${HOST}" ]
-		then
-			EXT_IF=$EXT_4IF
-			if [ -z "${HOST##*:*}" ]
-			then
-				EXT_IF=$EXT_6IF
-				FWSTACK=$IP6T
-			else
-				FWSTACK=$IP4T
-			fi
-
-			ROUTE=$(ip -o route get ${HOST})
-			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
-			[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp $DPORT $SPORT -j ${ACTION}
-			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
-			[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p icmp $DPORT -j ${ACTION}
-		else
-			if [ -z "${PROTO}" ]
-			then
-				for FWSTACK in $IP4T $IP6T
-				do
-					[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -p tcp $DPORT $SPORT -j ${ACTION}
-					[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -p udp $DPORT $SPORT -j ${ACTION}
-					[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -p icmp $DPORT -j ${ACTION}
-				done
-			else
-				$IP4T -A INPUT -p ${PROTO} -j ${ACTION}
-			fi
-		fi			
-	done
-}
-
-tuple_accept() {
-	for ALLOW in $REMOTE_TUPLES
-	do
-		HOST=${ALLOW%;*}
+		decode_source SOURCE ${TUPLE}
+		decode_port DPORT ${TUPLE}
 	
 		EXT_IF=$EXT_4IF
-		if [ -z "${HOST##*:*}" ]
+		if [ -z "${SOURCE##*:*}" ]
 		then
 			EXT_IF=$EXT_6IF
 			FWSTACK=$IP6T
 			DEST="::0"
+			ADDRFAM="-6"
 		else
 			FWSTACK=$IP4T
 			DEST="0/0"
 		fi
 
-		if [ -n "${HOST}" ]
+		if [ -n "${SOURCE}" ]
 		then
-			VALID=$(ip -o route get ${HOST})
-			[[ -n "${VALID##*$EXT_IF*}" ]] && $FWSTACK -A ALLOW -s ${HOST} -d ${DEST}  -p all -j ACCEPT
+			if [ -z "$DEBUG" ]
+			then
+				ROUTE=$(ip ${ADDRFAM} -o route get ${SOURCE})
+			else
+				lsb_msg "DEBUG: ip ${ADDRFAM} -o route get ${SOURCE}"
+				ROUTE="debug"
+			fi
+			[[ -n "${ROUTE##*$EXT_IF*}" ]] && $FWSTACK -A INPUT -s ${SOURCE} -d ${DEST}  -p all -j ACCEPT
 		fi
 	done
 }
 
-stop() {
+function stop() {
 	# The following rules will clear out any existing firewall rules, 
 	# and any chains that might have been created.
 	for FWSTACK in $IP4T $IP6T
@@ -267,7 +313,7 @@ stop() {
 	done
 }
 
-forwarding() {
+function forwarding() {
 # The following line below enables IP forwarding and thus 
 # by extension, NAT. Turn this on if you're going to be 
 # doing NAT or IP Masquerading.
@@ -284,7 +330,7 @@ forwarding() {
 	fi
 }
 
-start() {
+function start() {
 # These will setup our policies.
 	$IP4T -P INPUT DROP
 	$IP6T -P INPUT DROP
@@ -423,27 +469,27 @@ done
 	fi
 }
 
-lsb_log_begin() {
+function lsb_log_begin() {
         MSG="$*"
         run_by_init && log_action_begin_msg "${MSG}" "${PROG}" || echo "BEGIN: ${MSG}"
 }
 
-lsb_log_end() {
+function lsb_log_end() {
         MSG="$*"
         run_by_init && log_action_end_msg "${MSG}" "${PROG}" || echo "END: ${MSG}"
 }
 
-lsb_log_fail() {
+function lsb_log_fail() {
         MSG="$*"
         run_by_init && log_failure_msg "${MSG}" "${PROG}" || echo "FAIL: ${MSG}"
 }
 
-lsb_log_ok() {
+function lsb_log_ok() {
         MSG="$*"
         run_by_init && log_success_msg "${MSG}" "${PROG}" || echo "SUCCESS: ${MSG}"
 }
 
-lsb_msg() {
+function lsb_msg() {
         MSG="$*"
         run_by_init && log_action_msg "${MSG}" || echo "${MSG}"
 }
@@ -467,6 +513,11 @@ test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
 # this will automagically configure for your external default interface
 EXT_4IF="$(awk 'BEGIN { IGNORECASE=1 } /^[a-z0-9]+[ \t]+00000000/ { print $1; exit }' /proc/net/route)"
 EXT_6IF="$(awk 'BEGIN { IGNORECASE=1 } /^0+ 00 0+ 00/ && !/ffffffff/ { print $10; exit }' /proc/net/ipv6_route)"
+if [ -n "$DEBUG" ]
+then
+	[[ -z "$EXT_4IF" ]] && EXT_4IF="debug4"
+	[[ -z "$EXT_6IF" ]] && EXT_6IF="debug6"
+fi
 
 cmd=${1:-help}
 cmd=${cmd,,}
