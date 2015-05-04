@@ -48,7 +48,7 @@ FORWARDING=1
 # Note that these will not be applied if an internal non-default route is not found.
 REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
-#NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
+NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
 DEBUG="DEBUGME"	# null-string disables, non-null string enables
 
@@ -144,7 +144,11 @@ function tuple_locals() {
 			[[ -z "${DPORT##U*}" ]] && UDP=1 && DPORT="--dport $DPORT"
 			[[ -z "${DPORT##I*}" ]] && ICMP=1 && DPORT="--icmp-type $DPORT"
 
-			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]; then TCP=1; UDP=1; fi
+			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]
+			then
+				TCP=1; UDP=1;
+				DPORT="--dport $DPORT"
+			fi
 		else
 			# DPORT is null, so there's no service, so assume all protos
 			TCP=1
@@ -497,7 +501,7 @@ function lsb_msg() {
 ##########  Main starts here
 
 # override defaults with local settings
-[[ -z "$DEBUG" ]] && test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
+test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
 
 ## for LSB init-style startup
 [[ -r /lib/lsb/init-functions ]] && run_by_init && . /lib/lsb/init-functions
