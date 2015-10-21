@@ -71,6 +71,23 @@ test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
 EXT_4IF="$(awk 'BEGIN { IGNORECASE=1 } /^[a-z0-9]+[ \t]+00000000/ { print $1; exit }' /proc/net/route)"
 EXT_6IF="$(awk 'BEGIN { IGNORECASE=1 } /^0+ 00 0+ 00/ && !/ffffffff/ { print $10; exit }' /proc/net/ipv6_route)"
 
+if [ -z "${EXT_4IF//[^A-Za-z0-9]/}" ];
+then
+	# no default IPv4 interface.  Check for IPv6 first...
+	if [ -z "${EXT_6IF//[^A-Za-z0-9]/}" ];
+	then
+		# no IPv6 interface either, so we can't really continue
+		echo "No active network interface, bailing out"
+		exit 1
+	else
+		# there's an IPv6 interface, so we'll use that in case IPv4 comes up later
+		EXT_4IF="${EXT_6IF}"
+	fi
+else
+	# IPv4 is okay, so we'll short-circuit our test and assignment
+	EXT_6IF=${EXT_6IF:-$EXT_4IF}
+fi
+
 cmd=${1:-help}
 cmd=${cmd,,}
 
