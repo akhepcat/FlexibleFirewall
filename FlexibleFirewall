@@ -5,10 +5,10 @@
 
 ### BEGIN INIT INFO
 # Provides:          FlexibleFirewall
-# Required-Start:    mountkernfs $local_fs $network $syslog
+# Required-Start:    mountkernfs $local_fs $network $syslog $networking $ifupdown
 # Required-Stop:     $local_fs
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
+# Default-Start:     S 1 2 3 4 5
+# Default-Stop:      0 6
 # X-Start-Before:    $vboxdrv $virtualbox $libvirt-bin $libvirtd $vmware $fail2ban
 # X-Stop-After:      $network
 # Short-Description: configure iptables rules
