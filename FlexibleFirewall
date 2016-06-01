@@ -63,13 +63,16 @@ PROG="${0##*/}"
 
 # The location of the ipXtables binaries file on your system.
 # We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
-test -x /sbin/iptables${DEBUG} && IP4T="/sbin/iptables" || IP4T="ignore4"
-test -x /sbin/ip6tables${DEBUG} && IP6T="/sbin/ip6tables" || IP6T="ignore6"
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:$PATH
+test -x $(which iptables${DEBUG}) && IP4T="$(which iptables)" || IP4T="ignore4"
+test -x $(which ip6tables${DEBUG}) && IP6T="$(which ip6tables)" || IP6T="ignore6"
 
 # The Network Interface you will be protecting. 
 # this will automagically configure for your external default interface
-EXT_4IF="$(awk 'BEGIN { IGNORECASE=1 } /^[a-z0-9]+[ \t]+00000000/ { print $1; exit }' /proc/net/route)"
-EXT_6IF="$(awk 'BEGIN { IGNORECASE=1 } /^0+ 00 0+ 00/ && !/ffffffff/ { print $10; exit }' /proc/net/ipv6_route)"
+EXT_4IF=""
+EXT_6IF=""
+test -e /proc/net/route && EXT_4IF="$(awk 'BEGIN { IGNORECASE=1 } /^[a-z0-9]+[ \t]+00000000/ { print $1; exit }' /proc/net/route)"
+test -e /proc/net/ipv6_route && EXT_6IF="$(awk 'BEGIN { IGNORECASE=1 } /^0+ 00 0+ 00/ && !/ffffffff/ { print $10; exit }' /proc/net/ipv6_route)"
 
 if [ -z "${EXT_4IF//[^A-Za-z0-9]/}" ];
 then
@@ -85,11 +88,17 @@ then
 	fi
 else
 	# IPv4 is okay, so we'll short-circuit our test and assignment
-	EXT_6IF=${EXT_6IF:-$EXT_4IF}
+	if [ -z "${EXT_6IF}" ]
+	then
+		IP6T="ignore6"
+	else
+		EXT_6IF=${EXT_6IF:-$EXT_4IF}
+	fi
 fi
 
 cmd=${1:-help}
-cmd=${cmd,,}
+# get rid of newer bashism in favor of slightly more portable bashism
+cmd=$(tr '[:upper:]' '[:lower:]' <<<"$cmd")
 
 FAIL2BAN=0
 
