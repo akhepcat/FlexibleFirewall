@@ -34,7 +34,7 @@
 LOCAL_TUPLES="P41 T22 53 U67S U68S ::0/0;I129 192.168.0.0/16;I1"     # other valid tuples: "10.100.0.0/16;T443 !192.168.0.0/16"
 
 # 1 to enable IP forwarding/NAT,  0 disables, by default
-FORWARDING=1
+FORWARDING=0
 
 # If forwarding is enabled, and you would like to forward specific
 # ports to other machines on your home network, edit the variable below.
@@ -52,7 +52,7 @@ NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
 DEBUG="DEBUGME"	# null-string disables, non-null string enables
 
-# head -55 FlexibleFirewall | tail -39 > /etc/default/FlexibleFirewall
+# head -54 FlexibleFirewall | tail -38 > /etc/default/FlexibleFirewall
 ###########################################
 #
 # Functions here...
