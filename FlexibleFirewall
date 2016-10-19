@@ -52,6 +52,7 @@ NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
 DEBUG="DEBUGME"	# null-string disables, non-null string enables
 
+# head -55 FlexibleFirewall | tail -39 > /etc/default/FlexibleFirewall
 ###########################################
 #
 # Functions here...
