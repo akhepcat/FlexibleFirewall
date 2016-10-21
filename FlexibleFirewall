@@ -140,6 +140,7 @@ function tuple_locals() {
 
 		if [ -n "$DPORT" ]
 		then
+			DPORT=${DPORT//-/:}
 			[[ -z "${DPORT%%*S}" ]] && SPORT="--sport ${DPORT//[SUIT]/}" && DPORT="--dport ${DPORT//S/}"
 			[[ -z "${DPORT##T*}" ]] && TCP=1 && DPORT="--dport $DPORT"
 			[[ -z "${DPORT##U*}" ]] && UDP=1 && DPORT="--dport $DPORT"
@@ -150,6 +151,8 @@ function tuple_locals() {
 				TCP=1; UDP=1;
 				DPORT="--dport $DPORT"
 			fi
+
+			[[ -z "${DPORT##*-*}" ]] && [[ ICMP -ne 1 ]] && DPORT="-m multiport ${DPORT//dport /dports }"
 		else
 			# DPORT is null, so there's no service, so assume all protos
 			TCP=1
@@ -228,7 +231,7 @@ function tuple_forward() {
 
 			if [ -z "${DPORT##*-*}" ]
 			then
-				LPORT="--dport ${DPORT//-/:}"
+				LPORT="-m multiport --dports ${DPORT//-/:}"
 				DPORT=""
 			else
 				LPORT="--dport $DPORT"
@@ -433,15 +436,13 @@ tuple_accept
 
 	tuple_locals
 
-# Uncomment to drop port 137 netbios packets silently. 
-# We don't like that netbios stuff, and it's way too 
-# spammy with windows machines on the network.
+# Users might want netbios dropped silently...
 for FWSTACK in $IP4T $IP6T
 do
 	if [ -n "${NONETBIOS}" ]
 	then
-		$FWSTACK -A INPUT -p udp --dport 135:139 -j silent
-		$FWSTACK -A INPUT -p tcp --dport 135:139 -j silent
+		$FWSTACK -A INPUT -m multiport -p udp --dports 135:139 -j silent
+		$FWSTACK -A INPUT -m multiport -p tcp --dports 135:139 -j silent
 	fi
 
 # Our final trap. Everything on INPUT goes to the dropwall 
@@ -454,8 +455,8 @@ do
 # Drop some specific outbound chatter
 	if [ -n "${NONETBIOS}" ]
 	then
-		$FWSTACK -A OUTPUT -o $EXT_IF -p udp --dport 135:139 -j silent
-		$FWSTACK -A OUTPUT -o $EXT_IF -p tcp --dport 135:139 -j silent
+		$FWSTACK -A OUTPUT -o $EXT_IF -m multiport -p udp --dports 135:139 -j silent
+		$FWSTACK -A OUTPUT -o $EXT_IF -m multiport -p tcp --dports 135:139 -j silent
 	fi
 done
 
