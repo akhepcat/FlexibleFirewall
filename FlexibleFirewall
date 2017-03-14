@@ -198,20 +198,25 @@ tuple_locals() {
 		ACTION="ACCEPT"
 		[[ -z "${SERVICE##*!*}" ]] && ACTION="firewall" && SERVICE=${SERVICE//!/}
 		[[ -z "${SERVICE##*@*}" ]] && ACTION="silent" && SERVICE=${SERVICE//@/}
-		[[ -z "${SERVICE##*P*}" ]] && PROTO=${SERVICE//P/} && SERVICE=""
-		
-		if [ -z "${SERVICE##*;*}" ]
+		if [ -z "${SERVICE##*;P*}" ]
+		then
+			# address + service tuple
+			PROTO=${SERVICE#*;P}
+			SERVICE="${SERVICE%;P*}"
+		elif [ -z "${SERVICE##*;*}" ]
 		then
 			# address + service tuple
 			DPORT=${SERVICE#*;}
 			SERVICE="${SERVICE%;*}"
 		fi
+		[[ -z "${SERVICE##*P*}" ]] && PROTO=${SERVICE//P/} && SERVICE=""
+
 		# fall through to parse the rest of the service.
 		if [ -z "${SERVICE##*/*}" -o -z "${SERVICE##*:*}" -o -z "${SERVICE##*.*}" ]
 		then
 			# bare IP (v4/v6) 'any/any'  tuple, because no trailing service
 			SOURCE="-s ${SERVICE}"
-			HOST=${SERVICE}
+			[[ -z "${PROTO}" ]] && HOST=${SERVICE}
 		else
 			# it doesn't parse to an IP, so it's a port
 			DPORT=${SERVICE}
@@ -263,7 +268,7 @@ tuple_locals() {
 					[[ $ICMP -eq 1 ]] && $FWSTACK -A INPUT -p icmp $DPORT -j ${ACTION}
 				done
 			else
-				$IP4T -A INPUT -p ${PROTO} -j ${ACTION}
+				$IP4T -A INPUT ${SERVICE:+$SOURCE} -p ${PROTO} -j ${ACTION}
 			fi
 		fi			
 	done
