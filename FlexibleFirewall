@@ -450,7 +450,7 @@ do
 	$FWSTACK -A INPUT -j dropwall
 
 	EXT_IF=$EXT_4IF
-	[[ -z "${FWSTACK##*6*}" ]] && EXT_IF=$EXT_6IF
+	[[ -z "${FWSTACK##*6*}" ]] && EXT_IF=${EXT_6IF:-$EXT_4IF}
 
 # Drop some specific outbound chatter
 	if [ -n "${NONETBIOS}" ]
