@@ -81,6 +81,17 @@ function run_by_init() {
         fi
 }
 
+function do_status() {
+#        lsb_msg "status not implemented"
+	iptables -n -L dropwall >/dev/null 2>&1
+	if [ $? -eq 1 ]
+	then
+		lsb_msg "${PROG} policy is NOT loaded"
+	else
+		lsb_msg "${PROG} policy is loaded"
+	fi
+}
+
 function decode_port() {
 	# Returns the L4 port or ICMP/6 type (ready for further parsing) or null for 'any'
 	local R_PORT=$1
@@ -542,7 +553,7 @@ case ${cmd} in
         	;;
         force-reload|restart) stop; start
         	;;
-        status) lsb_msg "status not implemented"
+        status) do_status;
         	;;
         *) echo "${PROG} [stop|start|restart|force-reload|status]"
         	;;
