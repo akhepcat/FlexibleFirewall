@@ -370,22 +370,22 @@ then
 	tuple_forward
 fi
 
-# Now, our firewall chain. We use the limit commands to 
-# cap the rate at which it alerts to 15 log messages per minute.
+# We use the limit commands to cap the rate at which it alerts to 15 log messages per minute.
 for FWSTACK in $IP4T $IP6T
 do
+	# Now, our firewall chain. Reject traffic that gets here (ICMP responses)
 	$FWSTACK -N firewall
-	$FWSTACK -A firewall -m limit --limit 15/minute -j LOG --log-prefix Firewall:
-	$FWSTACK -A firewall -j DROP
+	$FWSTACK -A firewall -m limit --limit 15/minute -j LOG --log-prefix "IPT-Firewall:"
+	$FWSTACK -A firewall -j REJECT
 
-	# Now, our dropwall chain, for the final catchall filter.
+	# Now, our dropwall chain, for the final catchall filter. (Don't let attackers see responses)
 	$FWSTACK -N dropwall
-	$FWSTACK -A dropwall -m limit --limit 15/minute -j LOG --log-prefix Dropwall:
+	$FWSTACK -A dropwall -m limit --limit 15/minute -j LOG --log-prefix "IPT-Dropwall:"
 	$FWSTACK -A dropwall -j DROP
 
 	# Our "hey, them's some bad tcp flags!" chain.
 	$FWSTACK -N badflags
-	$FWSTACK -A badflags -m limit --limit 15/minute -j LOG --log-prefix Badflags:
+	$FWSTACK -A badflags -m limit --limit 15/minute -j LOG --log-prefix "IPT-Badflags:"
 	$FWSTACK -A badflags -j DROP
 
 	# And our silent logging chain.
@@ -497,6 +497,23 @@ lsb_msg() {
         run_by_init && log_action_msg "${MSG}" || echo "${MSG}"
 }
 
+check_status() {
+	if [ "ignore4" != "${IP4T}" ]
+	then
+		LOGRULES=$($IP4T -S | grep -iE "ipt-(drop|fire)wall" | wc -l)
+		if [ 2 -eq ${LOGRULES} ]
+		then
+			MSG="${PROG} is running"
+		else
+			MSG="${PROG} is not running"
+		fi
+	else
+		MSG="status not available in debug mode"
+	fi
+	
+	lsb_msg "${MSG}"
+}
+	
 
 case ${cmd} in
         start) lsb_log_begin "starting";
@@ -509,7 +526,7 @@ case ${cmd} in
         	;;
         force-reload|restart) stop; start
         	;;
-        status) lsb_msg "status not implemented"
+        status) check_status;
         	;;
         *) echo "${PROG} [stop|start|restart|force-reload|status]"
         	;;
