@@ -421,7 +421,7 @@ do
 	# Now, our dropwall chain, for the final catchall filter.
 	$FWSTACK -N dropwall
 	$FWSTACK -A dropwall -m limit --limit 15/minute -j LOG --log-prefix Dropwall:
-	$FWSTACK -A dropwall -j ${REJECT}
+	$FWSTACK -A dropwall -j DROP
 
 	# Our "hey, them's some bad tcp flags!" chain.
 	$FWSTACK -N badflags
