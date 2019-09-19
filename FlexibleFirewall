@@ -53,6 +53,8 @@ NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 DEBUG="foo"	# null-string disables, non-null string enables
 
 ###########################################
+# head -55 FlexibleFirewall | tail -38 > /etc/default/FlexibleFirewall
+#
 # override defaults with local settings
 test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
 
