@@ -28,7 +28,16 @@ TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 Note: It's easy to conflict local services with forwarded ports, so be careful.
 
 
-# Install
+# Install (systemd)
+
+* put a copy in /usr/local/sbin/
+* chmod +x /usr/local/sbin/FlexibleFirewall
+* put a copy of the systemd unit file (FlexibleFirewall.service) in /etc/systemd/system/ and "systemctl daemon-reload"
+* edit the top of the script for your local rules
+*  OR (preferred) create /etc/default/FlexibleFirewall  and put your rules there.
+* give it a run (systemctl start FlexibleFirewall )
+
+# Install (sysv init)
 
 * put a copy in /etc/init.d
 * chmod +x /etc/init.d/FlexibleFirewall
