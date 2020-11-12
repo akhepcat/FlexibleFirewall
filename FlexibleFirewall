@@ -1,4 +1,9 @@
 #!/bin/bash
+# (c) 2020 Leif Sawyer
+# License: GPL 3.0 (see https://github.com/akhepcat/)
+# Permanent home:  https://github.com/akhepcat/FlexibleFirewall/
+# Direct download: https://raw.githubusercontent.com/akhepcat/FlexibleFirewall/master/FlexibleFirewall
+# 
 # Initially based on "http://www.linuxhelp.net/guides/iptables/"
 #    for the generic IPtables rules, as it had some nice defaults
 ### This script will override the defaults below with values from /etc/default/FlexibleFirewall
@@ -53,7 +58,7 @@ NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 DEBUG="foo"	# null-string disables, non-null string enables
 
 ###########################################
-# head -55 FlexibleFirewall | tail -38 > /etc/default/FlexibleFirewall
+# head -60 FlexibleFirewall | tail -43 > /etc/default/FlexibleFirewall
 #
 # override defaults with local settings
 test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
