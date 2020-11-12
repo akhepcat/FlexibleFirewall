@@ -1,0 +1,17 @@
+[Unit]
+Description=Flexible Firewall starter
+After=network.target
+StartLimitIntervalSec=0
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+Group=root
+ExecStart=/usr/local/sbin/FlexibleFirewall start
+ExecStop=/usr/local/sbin/FlexibleFirewall stop
+
+[Install]
+WantedBy=multi-user.target
