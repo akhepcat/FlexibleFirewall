@@ -97,8 +97,7 @@ else
 	# IPv4 is okay, so we'll short-circuit our test and assignment
 	if [ -z "${EXT_6IF}" ]
 	then
-		IP6T="ignore6"
-	else
+		# IPv6 may come up later on the default IPv4 interface, so we also check for that
 		EXT_6IF=${EXT_6IF:-$EXT_4IF}
 	fi
 fi
