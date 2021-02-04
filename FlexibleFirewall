@@ -55,10 +55,12 @@ REMOTE_TUPLES="10.1.1.51;T25 10.1.1.51;53 10.1.1.50;2300-2400"
 
 NONETBIOS="true"	# null-string allows old-school "wins" netbios traffic
 
+QUIET="false"	# set to true, and it won't span klog with messages
+
 DEBUG="foo"	# null-string disables, non-null string enables
 
 ###########################################
-# head -60 FlexibleFirewall | tail -43 > /etc/default/FlexibleFirewall
+# head -61 FlexibleFirewall | tail -40 > /etc/default/FlexibleFirewall
 #
 # override defaults with local settings
 test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
@@ -381,17 +383,17 @@ for FWSTACK in $IP4T $IP6T
 do
 	# Now, our firewall chain. Reject traffic that gets here (ICMP responses)
 	$FWSTACK -N firewall
-	$FWSTACK -A firewall -m limit --limit 15/minute -j LOG --log-prefix "IPT-Firewall:"
+	[[ ${QUIET} = "true" ]] || $FWSTACK -A firewall -m limit --limit 15/minute -j LOG --log-prefix "IPT-Firewall:"
 	$FWSTACK -A firewall -j REJECT
 
 	# Now, our dropwall chain, for the final catchall filter. (Don't let attackers see responses)
 	$FWSTACK -N dropwall
-	$FWSTACK -A dropwall -m limit --limit 15/minute -j LOG --log-prefix "IPT-Dropwall:"
+	[[ ${QUIET} = "true" ]] || $FWSTACK -A dropwall -m limit --limit 15/minute -j LOG --log-prefix "IPT-Dropwall:"
 	$FWSTACK -A dropwall -j DROP
 
 	# Our "hey, them's some bad tcp flags!" chain.
 	$FWSTACK -N badflags
-	$FWSTACK -A badflags -m limit --limit 15/minute -j LOG --log-prefix "IPT-Badflags:"
+	[[ ${QUIET} = "true" ]] || $FWSTACK -A badflags -m limit --limit 15/minute -j LOG --log-prefix "IPT-Badflags:"
 	$FWSTACK -A badflags -j DROP
 
 	# And our silent logging chain.
