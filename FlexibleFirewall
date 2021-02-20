@@ -187,7 +187,7 @@ tuple_forward() {
 			FWSTACK=$IP4T
 		fi
 
-		ROUTE=$(ip -o route get ${HOST})
+		ROUTE=$(ip -o route get ${HOST//\/*/})
 		if [ -n "${VALID##*$EXT_IF*}" -o -n "$DEBUG" ]
 		then
 			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
@@ -261,7 +261,7 @@ tuple_locals() {
 				FWSTACK=$IP4T
 			fi
 
-			ROUTE=$(ip -o route get ${HOST})
+			ROUTE=$(ip -o route get ${HOST//\/*/})
 			[[ -n "${ROUTE}" ]] && EXT_IF=${ROUTE//*dev /} && EXT_IF=${EXT_IF%% *}
 			[[ $TCP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p tcp $DPORT $SPORT -j ${ACTION}
 			[[ $UDP -eq 1 ]] && $FWSTACK -A INPUT -i $EXT_IF ${SOURCE} -p udp $DPORT $SPORT -j ${ACTION}
@@ -300,7 +300,7 @@ tuple_accept() {
 
 		if [ -n "${HOST}" ]
 		then
-			VALID=$(ip -o route get ${HOST})
+			VALID=$(ip -o route get ${HOST//\/*/})
 			[[ -n "${VALID##*$EXT_IF*}" ]] && $FWSTACK -A ALLOW -s ${HOST} -d ${DEST}  -p all -j ACCEPT
 		fi
 	done
