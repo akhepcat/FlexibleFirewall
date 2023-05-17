@@ -513,7 +513,13 @@ check_status() {
 		then
 			MSG="${PROG} is running"
 		else
-			MSG="${PROG} is not running"
+			LOGRULES=$($IP4T -S | wc -l)
+			if [ ${LOGRULES} -gt 10 ]
+			then
+				MSG="IPTABLES loaded, but not managed by ${PROG}"
+			else
+				MSG="${PROG} is not running"
+			fi
 		fi
 	else
 		MSG="status not available in debug mode"
