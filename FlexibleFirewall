@@ -241,7 +241,7 @@ tuple_locals() {
 			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]; then TCP=1; UDP=1; fi
 
 			DPORT=${DPORT//[UIT]/}
-			[[ -n "${DPORT##*dport*}" ]] && DPORT="--dport ${DPORT//-/:}"
+			[[ -n "${DPORT##*-*}" ]] && DPORT="--dport ${DPORT//-/:}"
 		elif [ -z "${PROTO}" ]
 		then
 			# DPORT is null, so there's no service, so assume all protos
