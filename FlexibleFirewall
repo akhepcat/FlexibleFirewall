@@ -241,7 +241,15 @@ tuple_locals() {
 			if [ -n "${DPORT##*U*}" -a -n "${DPORT##*T*}" -a -n "${DPORT##*I*}" ]; then TCP=1; UDP=1; fi
 
 			DPORT=${DPORT//[UIT]/}
-			if [ -z "${DPORT##*-*}" ];
+
+			# Make sure we have a "--dport" in the port line
+			if [ "${DPORT//*--dport*/XXX}" != "XXX" ]
+			then
+				DPORT="--dport ${DPORT}"
+			fi
+
+			# Fix ranges to comply with iptables
+			if [ -z "${DPORT##*--*-*}" ];
 			then
 				DPORT=${DPORT//--dport /}
 				DPORT="${DPORT//-/:}"
