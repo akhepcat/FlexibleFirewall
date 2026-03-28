@@ -47,9 +47,9 @@ Note: It's easy to conflict local services with forwarded ports, so be careful.
 * give it a run (service FlexibleFirewall start )
 
 
-### NFTABLES SUPPORT
+# NFTABLES SUPPORT
 
-# Beta testing only
+### Beta testing only
 
 * Make sure you have "iptables-nft" installed (should be installed by default with newer iptables packages )
 * Stop and flush the current firewall ruleset
