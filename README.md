@@ -46,3 +46,15 @@ Note: It's easy to conflict local services with forwarded ports, so be careful.
 *  OR (preferred) create /etc/default/FlexibleFirewall  and put your rules there.
 * give it a run (service FlexibleFirewall start )
 
+
+### NFTABLES SUPPORT
+
+# Beta testing only
+
+* Make sure you have "iptables-nft" installed (should be installed by default with newer iptables packages )
+* Stop and flush the current firewall ruleset
+* Apply the patch 
+* Adjust your configuration to use "nftables"  via the new "TABLES" config option
+* Start the script up
+* validate! validate! validate!
+
