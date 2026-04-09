@@ -55,3 +55,5 @@ Note: It's easy to conflict local services with forwarded ports, so be careful.
 * Adjust your configuration to use "nftables"  via the new "TABLES" config option
 * Start the script up
 * validate! validate! validate!
+
+### the patch is maintained in case you need to quickly revert it out
