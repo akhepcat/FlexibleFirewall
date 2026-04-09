@@ -20,6 +20,8 @@
 # Description:       creates iptables rules based on simple tuples
 ### END INIT INFO
 
+TABLES="iptables"	# iptables or nftables
+
 # TUPLES are port, IP, or IP+port pairs used to define the firewall rules.
 # use the T prefix for tcp-only, U for udp only.  No prefix means both TCP and UDP
 # You can specific 'I' for ICMP, and then the 'port' become the ICMP type.
@@ -60,7 +62,7 @@ QUIET="false"	# set to true, and it won't span klog with messages
 DEBUG="foo"	# null-string disables, non-null string enables
 
 ###########################################
-# head -61 FlexibleFirewall | tail -40 > /etc/default/FlexibleFirewall
+# head -64 FlexibleFirewall | tail -43 > /etc/default/FlexibleFirewall
 #
 # override defaults with local settings
 test -r /etc/default/FlexibleFirewall && . /etc/default/FlexibleFirewall
@@ -73,8 +75,18 @@ PROG="${0##*/}"
 # The location of the ipXtables binaries file on your system.
 # We try to set up equivalent IPv4 and IPv6 rules, if you've got them.
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:$PATH
-test -x $(which iptables)${DEBUG} && IP4T="$(which iptables)" || IP4T="ignore4"
-test -x $(which ip6tables)${DEBUG} && IP6T="$(which ip6tables)" || IP6T="ignore6"
+if [ "${TABLES}" = "nftables" ]
+then
+	XTABLE="-nft"
+else
+	XTABLE="-legacy"
+fi
+test -x $(which iptables${XTABLE})${DEBUG} && IP4T="$(which iptables${XTABLE})" || IP4T="ignore4"
+test -x $(which ip6tables${X6TABLE})${DEBUG} && IP6T="$(which ip6tables${X6TABLE})" || IP6T="ignore6"
+
+# Fallback: if specific versions aren't found, try generic names
+[[ "${IP4T}" == "ignore4" ]] && IP4T="$(which iptables || echo 'ignore4')"
+[[ "${IP6T}" == "ignore6" ]] && IP6T="$(which ip6tables || echo 'ignore6')"
 
 # The Network Interface you will be protecting. 
 # this will automagically configure for your external default interface
